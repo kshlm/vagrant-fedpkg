@@ -1,0 +1,136 @@
+---
+- name: Base packages
+  hosts: all
+  remote_user: vagrant
+  gather_facts: false
+  tags:
+    - base
+
+  tasks:
+    - name: Enable better dnf settings
+      ini_file:
+        path: /etc/dnf/dnf.conf
+        section: main
+        option: "{{ item.key }}"
+        value: "{{ item.value }}"
+      with_dict:
+        keepcache: true
+        fastestmirror: true
+      become: true
+
+    - name: Install some required packages
+      dnf:
+        name: "{{ item }}"
+        state: installed
+      with_items:
+        - iproute
+        - iputils
+        - vim
+        - mock
+        - rpm-build
+        - ldns-utils
+        - mtr
+        - nmap-ncat
+        - fedora-packager
+        - krb5-workstation
+        - rsync
+        - perl
+        - pigz
+        - gofed
+        - tmux
+        - rsync
+      become: true
+
+- name: Setup user
+  hosts: all
+  remote_user: vagrant
+  gather_facts: false
+  tags:
+    - user
+
+  tasks:
+    - name: Add user kaushal
+      user:
+        name: kaushal
+        state: present
+        non_unique: true
+        uid: 1000
+        group: vagrant
+        home: /home/vagrant
+        groups:
+          - mock
+          - wheel
+      become: true
+
+    - name: Enable password less SSH
+      authorized_key:
+        user: kaushal
+        state: present
+        key: "{{ lookup('file', '/home/kaushal/.ssh/id_ed25519_local.pub') }}"
+
+    - name: Set SSH_AUTH_SOCK
+      lineinfile:
+        path: /home/vagrant/.bashrc
+        line: "export SSH_AUTH_SOCK=/home/vagrant/.ssh.agent"
+        state: present
+        create: yes
+        mode: 0644
+
+- name: Prepare for fedpkg'ing
+  hosts: all
+  gather_facts: false
+  remote_user: vagrant
+  tags:
+    - fedpkg
+
+  vars:
+    pkgdirs:
+      - rpmbuild
+      - specfiles
+      - pkgscm
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Create /vagrant/{{ pkgdirs }}
+      file:
+        path: /vagrant/{{ item }}
+        state: directory
+      with_items: "{{ pkgdirs }}"
+
+    - name: Symlink /home/vagrant/{{ pkgdirs }}
+      file:
+        path: /home/vagrant/{{ item }}
+        src: /vagrant/{{ item }}
+        state: link
+      with_items: "{{ pkgdirs }}"
+
+
+    - name: Setup rpmdev tree
+      command: /usr/bin/rpmdev-setuptree -d
+
+    - name: Create .config/rpkg directory
+      file:
+        path: /home/vagrant/.config/rpkg
+        state: directory
+
+    - name: Setup fedpkg pagure token
+      ini_file:
+        path: /home/vagrant/.config/rpkg/fedpkg.conf
+        section: fedpkg.pagure
+        option: token
+        value: "{{ pagure_token }}"
+
+    - name: Install git again #for some reason even though git is installed earlier it doesn't work
+      dnf:
+        name: git
+        state: present
+      become: yes
+
+    - name: Setup git config
+      git_config:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        scope: global
+      with_dict:
+        user.name: "Kaushal M"
+        user.email: "kshlmster@gmail.com"
