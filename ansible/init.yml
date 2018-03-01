@@ -134,3 +134,10 @@
       with_dict:
         user.name: "Kaushal M"
         user.email: "kshlmster@gmail.com"
+
+    - name: Set default kerberos identity
+      lineinfile:
+        path: /home/vagrant/.k5identity
+        line: kshlm@FEDORAPROJECT.ORG
+        create: true
+        mode: 0644
